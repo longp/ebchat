@@ -76,7 +76,6 @@ return new Promise((resolve,reject) => {
 						state.usersHash[message.senderID].recentMessages.shift()
 						state.usersHash[message.senderID].recentMessages.push(recentMessage)
 					}
-					console.log(state.usersHash[message.senderID]);
 					let emojis = [':love:', ':like:', ':haha:'];
 					let random = _.random(0,2)
 					api.setMessageReaction(emojis[random], message.messageID, (err) =>{
@@ -111,17 +110,10 @@ return new Promise((resolve,reject) => {
 	 			   	api.sendMessage(fireCountMsg ,message.threadID);
 	 		   }
 
-	 		   if (message.body === '/litboard') {
-					let fireCountMap = _.map(state.usersHash, (userIdObj) => {
-						return {
-							name:userIdObj.name,
-							fireCount:userIdObj.fireCount
-						}
-					}).sort((a,b) => {
-						if (a.name < b.name) return -1
-						if (a.name > b.name) return 1
-						return 0
-					})
+	 		   if (_.includes(message.body, 'litboard') || message.body === '/litboard') {
+					let split = message.body.split(" ")
+					let type = split[1]
+					let fireCountMap = generateLitBoard(state.usersHash, type)
 
 					let litboardMsg = '|====LIT🔥RANKINGS====|\n'
 					for (var i = 0; i < fireCountMap.length; i++) {
@@ -149,6 +141,40 @@ function checkInLitTable(message) {
 	return _.includes(litTable, message.toLowerCase())
 }
 
+function generateLitBoard(array, type) {
+	let identifier
+	let returnA
+	let returnB
+	switch (type) {
+		case 'count':
+			identifier = 'fireCount'
+			returnA = 1
+			returnB = -1
+			break;
+		case 'name':
+			identifier = 'name'
+			returnA = -1
+			returnB = 1
+			break;
+		default:
+			identifier = 'name'
+			returnA = -1
+			returnB = 1
+
+	}
+
+	return _.map(array, (userIdObj) => {
+		return {
+			name:userIdObj.name,
+			fireCount:parseInt(userIdObj.fireCount)
+		}
+	}).sort((a,b) => {
+
+		if (a[identifier] < b[identifier]) return returnA
+		if (a[identifier] > b[identifier]) return returnB
+		return 0
+	})
+}
 
 
 app.listen(PORT, () =>{
