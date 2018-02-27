@@ -20,7 +20,10 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 let usersHash = require("./usersHash.json")
-// Create simple echo bot
+let litTable = require("./litTable.json")
+// stores previous messages or sender
+let state = require("./state.json")
+
 return new Promise((resolve,reject) => {
 	login({email: process.env.FB_EMAIL, password: process.env.FB_PASSWORD}, (err, api) => {
 	    if(err) reject(err);
@@ -30,53 +33,111 @@ return new Promise((resolve,reject) => {
 .then((api) => {
 	return new Promise((resolve,reject) => {
 		api.listen((err, message) => {
-			if (message.threadID == 1498135396931396) {
-				console.log(message);
-			// if (message.threadID == 1498135396931396 || message.threadID == 805309687) {
+
+			if (message.threadID == 1498135396931396 || message.threadID == 805309687) {
+			// if (message.threadID == 1498135396931396) {
+				if (message.senderID == 805309687) {
+					let condition = _.includes(message.body, 'right?') || _.includes(message.body, 'i am right')
+					if (condition) {
+						let rightMsg = "Yes Master. You are always right."
+						api.sendMessage(rightMsg ,message.threadID);
+				  }
+				}
 				if (!usersHash[message.senderID]) {
 	 			   return api.getUserInfo(message.senderID, (err,data) =>{
 	 				   let userObject = data[message.senderID]
 	 				   userObject.fireCount = 1
-	 				   usersHash[message.senderID] = userObject;
-					   fs.writeFile('./usersHash.json', JSON.stringify(usersHash), (err,data) =>{
+	 				   userObject.recentMessage = [];
+	 				   state.usersHash[message.senderID] = userObject;
+					   fs.writeFile('./state.json', JSON.stringify(state, null,4), (err,data) =>{
 						   if (err) console.log(err);
+
 					   })
 	 			   })
 	 		   }
-	 		   if (message.body === '🔥' || _.includes(message.body, '🔥' ) == true) {
-	 				usersHash[message.senderID].fireCount += 1
-					fs.writeFile('./usersHash.json', JSON.stringify(usersHash), (err,data) =>{
+
+	 		   if (message.body === '🔥' ||  _.includes(message.body, '🔥') || checkInLitTable(message.body)) {
+					let recentMessage = {
+					   message:message.body,
+					   time:moment().format('M/DD/YYYY h:mm A'),
+					   timeStamp:message.timestamp,
+					   messageID:message.messageID
+					}
+
+	 				state.usersHash[message.senderID].fireCount += 1
+					if(!state.usersHash[message.senderID].recentMessages) {
+						state.usersHash[message.senderID].recentMessages = []
+					}
+
+					if (state.usersHash[message.senderID].recentMessages.length <= 30) {
+						state.usersHash[message.senderID].recentMessages.push(recentMessage)
+					}
+					else {
+						state.usersHash[message.senderID].recentMessages.shift()
+						state.usersHash[message.senderID].recentMessages.push(recentMessage)
+					}
+					console.log(state.usersHash[message.senderID]);
+					let emojis = [':love:', ':like:', ':haha:'];
+					let random = _.random(0,2)
+					api.setMessageReaction(emojis[random], message.messageID, (err) =>{
+						console.log(err);
+					})
+					fs.writeFile('./state.json', JSON.stringify(state, null,4), (err,data) =>{
 						if (err) console.log(err);
+
 					})
 	 		   }
+
+			  if (message.body === '/mymsgs') {
+				  let userObject = state.usersHash[message.senderID]
+				  if (!userObject.recentMessages) {
+					  api.sendMessage('No Recent Messages for ' + usersHash[message.senderID].firstName, message.threadID)
+					  return
+				  }
+
+				  let returnMessage = 'Recent Messages for ' + usersHash[message.senderID].firstName + " : \n"
+				  let startIndex = userObject.recentMessages.length >= 5 ? userObject.recentMessages.length - 5 : 0
+				  let endIndex = userObject.recentMessages.length
+
+				  for (var i = startIndex; i < endIndex; i++) {
+				  	let recentMessage = userObject.recentMessages[i]
+					returnMessage += recentMessage.message + " @ " + recentMessage.time + "\n"
+				  }
+				  api.sendMessage(returnMessage ,message.threadID);
+			  }
+
 	 		   if (message.body === '/litcount') {
-	 			   	let fireCountMsg = usersHash[message.senderID].firstName +" your LitCount is: " + usersHash[message.senderID].fireCount + '🔥'
+	 			   	let fireCountMsg = state.sersHash[message.senderID].firstName +" your LitCount is: " + usersHash[message.senderID].fireCount + '🔥'
 	 			   	api.sendMessage(fireCountMsg ,message.threadID);
 	 		   }
 
 	 		   if (message.body === '/litboard') {
-					let remapped = _.map(usersHash, (userIdObj) => {
+					let fireCountMap = _.map(state.usersHash, (userIdObj) => {
 						return {
 							name:userIdObj.name,
 							fireCount:userIdObj.fireCount
 						}
+					}).sort((a,b) => {
+						if (a.name < b.name) return -1
+						if (a.name > b.name) return 1
+						return 0
 					})
+
 					let litboardMsg = '|====LIT🔥RANKINGS====|\n'
-					for (var i = 0; i < remapped.length; i++) {
-						let line = remapped[i].name + " : " + remapped[i].fireCount + "🔥" + "\n"
+					for (var i = 0; i < fireCountMap.length; i++) {
+						let line = fireCountMap[i].name + " : " + fireCountMap[i].fireCount + "🔥" + "\n"
 						litboardMsg += line
 					}
 					api.sendMessage(litboardMsg, message.threadID)
 
 	 		   }
 			   if (message.body === '/clearrankings') {
-				   fs.writeFile('./usersHash.json', JSON.stringify({}), (err,data) =>{
+				   state.usersHash = {}
+				   fs.writeFile('./state.json', JSON.stringify(state), (err,data) =>{
 					   if (err) console.log(err);
 				   })
 			   }
 			}
-
-
 
 	   })
 	})
@@ -84,8 +145,9 @@ return new Promise((resolve,reject) => {
 })
 
 
-
-
+function checkInLitTable(message) {
+	return _.includes(litTable, message.toLowerCase())
+}
 
 
 
